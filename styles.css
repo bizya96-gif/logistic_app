@@ -10,6 +10,8 @@
 body { background-color: var(--bg-color); color: var(--text-color); font-family: system-ui, -apple-system, sans-serif; }
 a { color: var(--accent-color); text-decoration: none; }
 a:hover { color: var(--primary-color); }
+.btn, .form-control, .form-select { min-height: 44px; }
+.btn-sm, .form-select-sm, .form-control-sm { min-height: 40px; }
 .btn-primary, .btn-primary:hover, .btn-primary:focus, .btn-primary:active { background-color: var(--primary-color) !important; border-color: var(--primary-color) !important; color: #000 !important; }
 .btn-success { background-color: var(--success-color) !important; border-color: var(--success-color) !important; }
 .btn-outline-primary { color: var(--accent-color) !important; border-color: var(--accent-color) !important; }
@@ -19,11 +21,23 @@ a:hover { color: var(--primary-color); }
 .nav-tab-btn { background: none; border: none; padding: 1rem 1.5rem; font-weight: 500; color: #64748b; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; }
 .nav-tab-btn.active { color: var(--text-color); border-bottom-color: var(--primary-color); font-weight: 600; }
 .nav-tab-btn:hover { color: var(--accent-color); }
+.nav-tabs-wrap { align-items: center; gap: 8px; }
+.nav-icon-btn { width: 42px; min-width: 42px; padding-left: 0 !important; padding-right: 0 !important; font-size: 1rem; }
+.nav-create-btn { white-space: nowrap; }
 .card-custom { background: var(--card-bg); border: none; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+.stats-grid { --bs-gutter-x: 12px; --bs-gutter-y: 12px; }
 .stat-card { border-left: 4px solid var(--primary-color); }
 .stat-card.expense { border-left-color: var(--danger-color); }
 .stat-card.profit { border-left-color: var(--success-color); }
 .stat-card.trips { border-left-color: var(--accent-color); }
+.stats-grid .stat-card { min-height: 74px; padding: 10px 12px !important; border-radius: 10px; }
+.stat-card .small { font-size: 0.72rem; line-height: 1.15; }
+.stat-card .fs-3 { font-size: clamp(1.18rem, 2vw, 1.5rem) !important; line-height: 1.05; margin-top: 4px !important; overflow-wrap: anywhere; }
+.filters-accordion .accordion-item { border: 0; overflow: hidden; }
+.filters-accordion .accordion-button { min-height: 46px; padding: 10px 14px; color: var(--text-color); font-weight: 700; background: #fff; box-shadow: none; }
+.filters-accordion .accordion-button:not(.collapsed) { background: #fff7ed; color: var(--text-color); box-shadow: none; }
+.filters-accordion .accordion-button:focus { border-color: var(--accent-color); box-shadow: 0 0 0 0.25rem rgba(249, 115, 22, 0.15); }
+.filters-accordion .accordion-body { padding: 12px 14px 14px; border-top: 1px solid #e2e8f0; }
 .section-view { display: none; animation: fadeIn 0.3s ease; }
 .section-view.active { display: block; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
@@ -63,6 +77,11 @@ a:hover { color: var(--primary-color); }
 .trip-id-badge { background: var(--primary-color); color: white; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 14px; box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3); }
 .modal-custom .modal-body { padding: 24px; max-height: calc(90vh - 140px); overflow-y: auto; }
 .modal-custom .modal-footer { background: #FAFAFA; border-top: 1px solid #e2e8f0; padding: 16px 24px; }
+.payment-modal .modal-content { border: none; border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.18); }
+.payment-modal .modal-header { background: #FAFAFA; border-bottom: 2px solid var(--primary-color); padding: 18px 22px; }
+.payment-modal .modal-body { padding: 22px; }
+.payment-modal .modal-footer { background: #FAFAFA; border-top: 1px solid #e2e8f0; padding: 14px 22px; }
+.payment-modal #paymentTripLabel { max-width: 100%; overflow-wrap: anywhere; }
 
 .section-block { margin-bottom: 28px; }
 .section-title { font-size: 14px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
@@ -90,3 +109,214 @@ input:checked + .slider:before { transform: translateX(20px); }
 .btn-edit:hover { background-color: var(--accent-color); color: white; }
 .btn-delete { color: var(--danger-color); border-color: var(--danger-color); }
 .btn-delete:hover { background-color: var(--danger-color); color: white; }
+.mobile-details-cell { display: none; }
+.trip-details-modal .modal-content { border: none; border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.18); }
+.trip-details-modal .modal-header { background: #FAFAFA; border-bottom: 2px solid var(--primary-color); padding: 18px 22px; }
+.trip-details-modal .modal-body { padding: 22px; }
+.trip-details-modal .modal-footer { background: #FAFAFA; border-top: 1px solid #e2e8f0; padding: 14px 22px; }
+.details-table { margin: 0; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; background: #fff; }
+.details-row { display: grid; grid-template-columns: minmax(130px, 0.38fr) minmax(0, 1fr); min-height: 42px; border-bottom: 1px solid #e2e8f0; }
+.details-row:last-child { border-bottom: 0; }
+.details-row dt,
+.details-row dd { display: flex; align-items: center; margin: 0; padding: 9px 12px; min-width: 0; }
+.details-row dt { background: #f8fafc; color: #64748b; font-size: 0.82rem; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; word-break: break-word; border-right: 1px solid #e2e8f0; }
+.details-row dd { justify-content: flex-end; color: var(--text-color); font-size: 0.95rem; text-align: right; overflow-wrap: anywhere; }
+.details-row strong { font-weight: 700; overflow-wrap: anywhere; }
+
+@media (max-width: 767.98px) {
+    body { font-size: 16px; }
+    .container { max-width: 100%; padding-left: 12px; padding-right: 12px; }
+    .app-nav { position: sticky; top: 0; }
+    .nav-inner { flex-direction: column; align-items: stretch !important; gap: 8px; padding: 10px 12px !important; }
+    .navbar-brand { font-size: 1.1rem !important; justify-content: center; }
+    .nav-tabs-wrap { width: 100%; display: grid !important; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; gap: 8px; }
+    .nav-tab-btn { min-height: 44px; padding: 10px 8px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; font-size: 0.92rem; }
+    .nav-tab-btn.active { border-color: var(--primary-color); border-bottom-color: var(--primary-color); background: #fff7ed; }
+    .nav-icon-btn { width: 44px; min-width: 44px; min-height: 44px; }
+    .nav-create-btn { min-height: 44px; padding-left: 8px; padding-right: 8px; font-size: 0.92rem; }
+
+    main.container { padding-top: 14px !important; padding-bottom: 18px !important; }
+    .dashboard-toolbar { align-items: stretch !important; gap: 12px !important; margin-bottom: 16px !important; }
+    .dashboard-toolbar > div:first-child { width: 100%; }
+    .dashboard-toolbar h2 { font-size: 1.25rem; }
+
+    .stats-grid { --bs-gutter-x: 8px; --bs-gutter-y: 8px; }
+    .stats-grid > [class*="col-"] { width: 50%; flex: 0 0 auto; }
+    .stats-grid .stat-card { padding: 8px 10px !important; min-height: 62px; }
+    .stat-card .small { font-size: 0.68rem; line-height: 1.1; }
+    .stat-card .fs-3 { font-size: clamp(1rem, 4.2vw, 1.22rem) !important; line-height: 1.05; }
+
+    .filters-card { padding: 0 !important; }
+    .filters-accordion { margin-bottom: 10px !important; }
+    .filters-accordion .accordion-button { min-height: 42px; padding: 9px 12px; font-size: 0.95rem; }
+    .filters-accordion .accordion-body { padding: 10px 12px 12px; }
+    .filters-card .row { --bs-gutter-y: 10px; }
+    .filters-card .form-select,
+    .filters-card .form-control { font-size: 16px; }
+
+    .trips-card { background: transparent; box-shadow: none; border-radius: 0; overflow: visible !important; }
+    .trips-card-header { flex-direction: column; align-items: stretch !important; gap: 6px; padding: 0 0 10px !important; border-bottom: 0 !important; }
+    .trips-card-header h5 { font-size: 1.05rem; }
+    .payment-summary { line-height: 1.45; }
+    .table-responsive { overflow: visible; }
+    .table { display: block; margin: 0; }
+    .table thead,
+    .table tfoot { display: none; }
+    .table tbody { display: grid; gap: 8px; }
+    .table tbody tr.trip-row {
+        display: grid;
+        grid-template-columns: minmax(54px, auto) minmax(80px, 1fr) auto;
+        grid-template-areas:
+            "id date payment"
+            "route route route"
+            "contractor contractor contractor"
+            "income income income"
+            "expense profit details";
+        align-items: center;
+        gap: 5px 10px;
+        background: var(--card-bg);
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+        padding: 9px 10px;
+    }
+    .table tbody tr.trip-row td {
+        display: block;
+        min-width: 0;
+        padding: 0 !important;
+        border: 0;
+        text-align: left !important;
+        white-space: normal;
+    }
+    .table tbody tr.trip-row td::before { display: none; }
+    .table tbody tr.trip-row td[data-label="ID"] { grid-area: id; font-size: 0.92rem; font-weight: 700; color: var(--text-color); }
+    .table tbody tr.trip-row td[data-label="Дата"] { grid-area: date; color: #64748b; font-size: 0.82rem; }
+    .table tbody tr.trip-row td[data-label="Оплата"] { grid-area: payment; justify-self: end; display: flex; align-items: center; }
+    .table tbody tr.trip-row td[data-label="Маршрут"] {
+        grid-area: route;
+        font-size: 0.95rem;
+        font-weight: 650;
+        line-height: 1.25;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .table tbody tr.trip-row td[data-label="Контрагент"] {
+        grid-area: contractor;
+        color: #475569;
+        font-size: 0.84rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .table tbody tr.trip-row td[data-label="Стоимость"],
+    .table tbody tr.trip-row td[data-label="Расход"],
+    .table tbody tr.trip-row td[data-label="Прибыль"] {
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+        font-size: 0.88rem;
+        line-height: 1.1;
+        white-space: nowrap;
+    }
+    .table tbody tr.trip-row td[data-label="Стоимость"] { grid-area: income; }
+    .table tbody tr.trip-row td[data-label="Расход"] { grid-area: expense; }
+    .table tbody tr.trip-row td[data-label="Прибыль"] { grid-area: profit; }
+    .table tbody tr.trip-row td[data-label="Стоимость"]::before,
+    .table tbody tr.trip-row td[data-label="Расход"]::before,
+    .table tbody tr.trip-row td[data-label="Прибыль"]::before {
+        content: attr(data-label) " -";
+        display: inline;
+        color: #64748b;
+        font-size: 0.72rem;
+        font-weight: 600;
+        line-height: 1;
+        flex: 0 0 auto;
+    }
+    .table tbody tr.trip-row td[data-label="Водитель"],
+    .table tbody tr.trip-row td[data-label="№ счета"],
+    .table tbody tr.trip-row td[data-label="Тип документа"],
+    .table tbody tr.trip-row td[data-label="Действия"] { display: none !important; }
+    .table tbody tr.trip-row .mobile-details-cell { grid-area: details; display: block; justify-self: end; }
+    .mobile-details-btn { min-height: 32px; padding: 4px 9px; font-size: 0.78rem; border-radius: 7px; }
+    .payment-check { width: 24px; height: 24px; }
+    .btn-action { width: 44px; height: 44px; font-size: 16px; }
+    .empty-row td { display: block !important; background: var(--card-bg); border-radius: 12px; padding: 28px 16px !important; }
+
+    .modal-custom .modal-dialog {
+        align-items: stretch !important;
+        display: flex !important;
+        width: 100%;
+        max-width: none;
+        min-height: 100dvh;
+        height: 100dvh;
+        margin: 0;
+    }
+    .modal-custom .modal-content { min-height: 0; height: 100dvh; border-radius: 0; box-shadow: none; }
+    .modal-custom .modal-header { flex: 0 0 auto; padding: 14px 16px; }
+    .modal-custom .modal-title { font-size: 18px; }
+    .modal-custom .btn-close { min-width: 44px; min-height: 44px; background-size: 14px; }
+    .trip-id-badge { padding: 5px 10px; font-size: 12px; }
+    .modal-custom .modal-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        padding: 14px 16px 18px;
+        max-height: none;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .modal-custom .modal-footer { flex: 0 0 auto; display: grid; grid-template-columns: 1fr; gap: 10px; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); }
+    .modal-custom .modal-footer .btn { width: 100%; margin: 0; }
+    .payment-modal .modal-dialog { margin: 12px; }
+    .payment-modal .modal-content { border-radius: 12px; }
+    .payment-modal .modal-header,
+    .payment-modal .modal-body,
+    .payment-modal .modal-footer { padding-left: 16px; padding-right: 16px; }
+    .payment-modal .modal-footer { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    .payment-modal .modal-footer .btn { width: 100%; margin: 0; }
+    .payment-modal .btn-close { min-width: 44px; min-height: 44px; background-size: 14px; }
+    .trip-details-modal .modal-dialog { margin: 12px; }
+    .trip-details-modal .modal-content { border-radius: 12px; }
+    .trip-details-modal .modal-header,
+    .trip-details-modal .modal-body,
+    .trip-details-modal .modal-footer { padding-left: 16px; padding-right: 16px; }
+    .trip-details-modal .modal-footer { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .trip-details-modal .modal-footer .btn { width: 100%; margin: 0; }
+    .trip-details-modal .btn-close { min-width: 44px; min-height: 44px; background-size: 14px; }
+    .details-table { border-radius: 8px; }
+    .details-row { grid-template-columns: minmax(120px, 0.44fr) minmax(0, 1fr); min-height: 40px; }
+    .details-row dt,
+    .details-row dd { padding: 8px 10px; }
+    .details-row dt { font-size: 0.78rem; }
+    .details-row dd { font-size: 0.9rem; }
+    .section-block { margin-bottom: 18px; }
+    .section-block:first-child { margin-bottom: 20px; }
+    #tripForm .row { --bs-gutter-y: 10px; }
+    #tripForm .form-control,
+    #tripForm .form-select { font-size: 16px; }
+    .section-title { font-size: 13px; margin-bottom: 10px; }
+    .toggle-wrapper { min-height: 44px; }
+    .toast-container { left: 12px; right: 12px; top: 12px; }
+    .custom-toast { width: 100%; margin-bottom: 8px; }
+}
+
+@media (max-width: 389.98px) {
+    .table tbody tr.trip-row {
+        grid-template-columns: minmax(48px, auto) minmax(70px, 1fr) auto;
+        gap: 5px 8px;
+        padding: 8px 9px;
+    }
+    .mobile-details-btn { padding-left: 7px; padding-right: 7px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
+}

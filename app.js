@@ -1,11 +1,15 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbzgSi0kCHjxUnuH1ccTEULctrOr9pDd0OKvJVkI5KNvI42Cbv3f_O-wO2eV2RmNfeMt/exec';
 const POST_CONFIRM_DELAY_MS = 1500;
+const TRIPS_CACHE_KEY = 'alexlogistic.trips.cache.v1';
+const DEFAULT_NEW_TRIP_DRIVER = 'Бизюков';
+const DEFAULT_NEW_TRIP_VEHICLE = 'ГАЗ';
 let tripsData = [];
 let currentTrips = [];
 let currentSort = { column: 'date', direction: 'desc' }; 
 let counters = {};
+let latestTripsRequestId = 0;
+let mutationVersion = 0;
 
-// Режим модалки: 'create' или 'edit'
 let modalMode = 'create';
 let editingTripId = null;
 
@@ -44,7 +48,9 @@ function setRefreshDisabled(disabled) {
     const refreshBtn = document.getElementById('refreshBtn');
     if (!refreshBtn) return;
     refreshBtn.disabled = disabled;
-    refreshBtn.textContent = disabled ? 'Обновление...' : '🔄 Обновить';
+    refreshBtn.textContent = '🔄';
+    refreshBtn.title = disabled ? 'Обновление данных...' : 'Обновить данные из таблицы';
+    refreshBtn.setAttribute('aria-label', refreshBtn.title);
 }
 
 function updateLastUpdatedStatus(text, isError = false) {
@@ -56,6 +62,10 @@ function updateLastUpdatedStatus(text, isError = false) {
 
 function wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function markDataMutation() {
+    mutationVersion += 1;
 }
 
 function parseMoney(value) {
@@ -92,6 +102,32 @@ function formatDateForSheet(date) {
     return `${day}.${month}.${year}`;
 }
 
+function formatDateForInput(date) {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${year}-${month}-${day}`;
+}
+
+function sheetDateToInput(value) {
+    if (!value) return '';
+    const str = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    const parts = str.split('.');
+    if (parts.length === 3) {
+        const [day, month, year] = parts;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+    return '';
+}
+
+function inputDateToSheet(value) {
+    if (!value) return '';
+    const [year, month, day] = value.split('-');
+    if (!year || !month || !day) return '';
+    return `${day}.${month}.${year}`;
+}
+
 function normalizeDateForCompare(value) {
     if (!value) return '';
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -115,6 +151,7 @@ function tripMatchesFormData(trip, expected) {
         String(trip.vehicle || '').trim() === String(expected.vehicle || '').trim() &&
         String(trip.contractor || '').trim() === String(expected.contractor || '').trim() &&
         String(trip.route || '').trim() === String(expected.route || '').trim() &&
+        String(trip.docType || '').trim() === String(expected.docType || '').trim() &&
         String(trip.invoice || '').trim() === String(expected.invoice || '').trim() &&
         parseMoney(trip.income) === parseMoney(expected.income) &&
         parseMoney(trip.commission) === parseMoney(expected.commission) &&
@@ -139,22 +176,109 @@ function findNewMatchingTrip(expected, previousIds) {
     });
 }
 
+function readTripsCache() {
+    try {
+        const cached = localStorage.getItem(TRIPS_CACHE_KEY);
+        if (!cached) return null;
+        const parsed = JSON.parse(cached);
+        if (!parsed || !Array.isArray(parsed.data)) return null;
+        return parsed;
+    } catch (err) {
+        console.warn('Не удалось прочитать локальный кэш рейсов:', err);
+        return null;
+    }
+}
+
+function writeTripsCache(data) {
+    try {
+        localStorage.setItem(TRIPS_CACHE_KEY, JSON.stringify({
+            savedAt: Date.now(),
+            data: data
+        }));
+    } catch (err) {
+        console.warn('Не удалось сохранить локальный кэш рейсов:', err);
+    }
+}
+
+function normalizeTripsData(data) {
+    counters = {};
+
+    return data.map(row => {
+        const id = row['№ рейса'] || '';
+        const contractor = row['Контрагент'] || '';
+        if (!id && !contractor) return null;
+
+        if (id && /^[А-ЯA-Z]-\d+$/i.test(id)) {
+            const match = id.match(/^([А-ЯA-Z])-(\d+)$/i);
+            if (match) {
+                const letter = match[1].toUpperCase();
+                const num = parseInt(match[2]);
+                if (!counters[letter] || num >= counters[letter]) {
+                    counters[letter] = num;
+                }
+            }
+        }
+
+        const isPaid = row.__isPaid !== undefined
+            ? !!row.__isPaid
+            : !!(row['Дата оплаты'] && String(row['Дата оплаты']).trim() !== '');
+
+        return {
+            id: id,
+            date: parseDate(row['Дата выезда']),
+            driver: row['Водитель'] || '',
+            vehicle: row['Автомобиль'] || '',
+            contractor: contractor,
+            route: row['Маршрут'] || '',
+            docType: row['Тип документа'] || 'Заявка',
+            cargoReceiver: row['Грузополучатель'] || '',
+            cargo: row['Груз'] || '',
+            invoice: row['№ счет'] || '',
+            distance: parseMoney(row['Расстояние']),
+            income: parseMoney(row['Цена договора']),
+            standbyPrice: parseMoney(row['Цена простоя']),
+            paymentType: row['Нал/Б.Н.'] || 'Б.Н.',
+            paymentDate: parseDate(row['Дата оплаты']),
+            commission: parseMoney(row['Комиссионные']),
+            fuel: parseMoney(row['На топливо']),
+            liters: parseFloat(row['литр']) || 0,
+            toll: parseMoney(row['Платная дорога']),
+            profit: parseMoney(row['Прибль по загрузке']),
+            leshe: row['Леше'] || '',
+            sum: row['Сумма'] || '',
+            isPaid: isPaid
+        };
+    }).filter(trip => trip !== null);
+}
+
+function applyTripsData(data) {
+    tripsData = normalizeTripsData(data);
+    console.log('📊 Счётчики ID после загрузки:', counters);
+
+    populateDatalists();
+    populateFilters();
+    applyFilters();
+    return tripsData;
+}
+
 async function refreshAndConfirm(confirmFn, failureMessage) {
     await wait(POST_CONFIRM_DELAY_MS);
-    const refreshedTrips = await loadTripsFromSheet({ showSuccessToast: false });
+    const refreshedTrips = await loadTripsFromSheet({ showSuccessToast: false, skipCache: true });
     if (!refreshedTrips || !confirmFn()) {
         throw new Error(failureMessage);
     }
 }
 
-async function updatePaymentInSheet(trip, isPaid, checkbox) {
-    if (!trip || !trip.id) return;
+async function updatePaymentInSheet(trip, isPaid, checkbox, selectedPaymentDate = '') {
+    if (!trip || !trip.id) return false;
 
     const previousPaid = trip.isPaid;
     const previousPaymentDate = trip.paymentDate;
-    const paymentDate = isPaid ? formatDateForSheet(new Date()) : '';
+    const paymentDate = isPaid ? selectedPaymentDate : '';
 
+    markDataMutation();
     checkbox.disabled = true;
+    checkbox.checked = isPaid;
     trip.isPaid = isPaid;
     trip.paymentDate = paymentDate;
     updatePaymentStats();
@@ -174,11 +298,14 @@ async function updatePaymentInSheet(trip, isPaid, checkbox) {
         await refreshAndConfirm(
             () => {
                 const confirmedTrip = findTripById(trip.id);
-                return confirmedTrip && confirmedTrip.isPaid === isPaid;
+                return confirmedTrip &&
+                    confirmedTrip.isPaid === isPaid &&
+                    (!isPaid || normalizeDateForCompare(confirmedTrip.paymentDate) === normalizeDateForCompare(paymentDate));
             },
             'Оплата не подтвердилась после обновления данных'
         );
-        showToast(isPaid ? '✅ Оплата записана в таблицу' : '✅ Оплата снята в таблице');
+        showToast(isPaid ? `✅ Оплата записана на ${paymentDate}` : '✅ Оплата снята в таблице');
+        return true;
     } catch (err) {
         console.error('Ошибка обновления оплаты:', err);
         trip.isPaid = previousPaid;
@@ -186,6 +313,7 @@ async function updatePaymentInSheet(trip, isPaid, checkbox) {
         checkbox.checked = previousPaid;
         updatePaymentStats();
         showToast('❌ Не удалось обновить оплату в таблице', 'error');
+        return false;
     } finally {
         checkbox.disabled = false;
     }
@@ -193,10 +321,21 @@ async function updatePaymentInSheet(trip, isPaid, checkbox) {
 
 // ===== ЗАГРУЗКА ИЗ GOOGLE ТАБЛИЦЫ =====
 async function loadTripsFromSheet(options = {}) {
-    const { showSuccessToast = true } = options;
+    const { showSuccessToast = true, skipCache = false } = options;
+    const cached = skipCache ? null : readTripsCache();
+    const hasVisibleData = tripsData.length > 0;
+    const requestId = ++latestTripsRequestId;
+    const mutationVersionAtStart = mutationVersion;
+
+    if (cached && !hasVisibleData) {
+        applyTripsData(cached.data);
+        const savedAt = cached.savedAt ? new Date(cached.savedAt).toLocaleString('ru-RU') : 'неизвестно';
+        updateLastUpdatedStatus(`Показаны сохраненные данные от ${savedAt}. Обновляем...`);
+    }
+
     setRefreshDisabled(true);
     try {
-        const response = await fetch(API_URL);
+        const response = await fetch(skipCache ? `${API_URL}?noCache=1` : API_URL);
         const data = await response.json();
         
         if (data.error) {
@@ -211,66 +350,24 @@ async function loadTripsFromSheet(options = {}) {
             return null;
         }
 
-        counters = {};
+        if (requestId !== latestTripsRequestId || mutationVersionAtStart !== mutationVersion) {
+            return tripsData;
+        }
 
-        tripsData = data.map(row => {
-            const id = row['№ рейса'] || '';
-            const contractor = row['Контрагент'] || '';
-            if (!id && !contractor) return null;
-
-            if (id && /^[А-ЯA-Z]-\d+$/i.test(id)) {
-                const match = id.match(/^([А-ЯA-Z])-(\d+)$/i);
-                if (match) {
-                    const letter = match[1].toUpperCase();
-                    const num = parseInt(match[2]);
-                    if (!counters[letter] || num >= counters[letter]) {
-                        counters[letter] = num;
-                    }
-                }
-            }
-
-            const isPaid = row.__isPaid !== undefined
-                ? !!row.__isPaid
-                : !!(row['Дата оплаты'] && String(row['Дата оплаты']).trim() !== '');
-
-            return {
-                id: id,
-                date: parseDate(row['Дата выезда']),
-                driver: row['Водитель'] || '',
-                vehicle: row['Автомобиль'] || '',
-                contractor: contractor,
-                route: row['Маршрут'] || '',
-                docType: row['Тип документа'] || 'Заявка',
-                cargoReceiver: row['Грузополучатель'] || '',
-                cargo: row['Груз'] || '',
-                invoice: row['№ счет'] || '',
-                distance: parseMoney(row['Расстояние']),
-                income: parseMoney(row['Цена договора']),
-                standbyPrice: parseMoney(row['Цена простоя']),
-                paymentType: row['Нал/Б.Н.'] || 'Б.Н.',
-                paymentDate: parseDate(row['Дата оплаты']),
-                commission: parseMoney(row['Комиссионные']),
-                fuel: parseMoney(row['На топливо']),
-                liters: parseFloat(row['литр']) || 0,
-                toll: parseMoney(row['Платная дорога']),
-                profit: parseMoney(row['Прибль по загрузке']),
-                leshe: row['Леше'] || '',
-                sum: row['Сумма'] || '',
-                isPaid: isPaid
-            };
-        }).filter(trip => trip !== null);
-        
-        console.log('📊 Счётчики ID после загрузки:', counters);
-        
-        populateDatalists(); // Обновляем списки для ручного ввода
-        applyFilters();
+        writeTripsCache(data);
+        applyTripsData(data);
         updateLastUpdatedStatus('Последнее обновление: ' + new Date().toLocaleString('ru-RU'));
         if (showSuccessToast) {
-            showToast(`✅ Загружено ${tripsData.length} рейсов`);
+            showToast(cached ? `✅ Данные обновлены: ${tripsData.length} рейсов` : `✅ Загружено ${tripsData.length} рейсов`);
         }
         return tripsData;
     } catch (err) {
         console.error('Ошибка загрузки:', err);
+        if (cached) {
+            showToast('⚠️ Свежие данные не загрузились, показан локальный кэш', 'error');
+            updateLastUpdatedStatus('Ошибка обновления: показаны сохраненные данные', true);
+            return tripsData;
+        }
         showToast(' Не удалось загрузить данные. Проверьте доступность Google Apps Script.', 'error');
         updateLastUpdatedStatus('Ошибка обновления: данные не загружены', true);
         return null;
@@ -300,13 +397,137 @@ function populateDatalists() {
 
 // ===== МОДАЛЬНОЕ ОКНО =====
 let tripModal;
+let paymentDateModal;
+let tripDetailsModal;
+let pendingPaymentTrip = null;
+let pendingPaymentCheckbox = null;
+
 document.addEventListener('DOMContentLoaded', function() {
     tripModal = new bootstrap.Modal(document.getElementById('createTripModal'));
+    paymentDateModal = new bootstrap.Modal(document.getElementById('paymentDateModal'));
+    tripDetailsModal = new bootstrap.Modal(document.getElementById('tripDetailsModal'));
     
     document.getElementById('createTripModal').addEventListener('show.bs.modal', function () {
         hideLoading();
     });
+
+    document.getElementById('createTripModal').addEventListener('shown.bs.modal', function () {
+        resetTripModalScroll();
+    });
+
+    document.getElementById('paymentDateModal').addEventListener('shown.bs.modal', function () {
+        document.getElementById('paymentConfirmDate').focus();
+    });
+
+    document.getElementById('paymentDateModal').addEventListener('hidden.bs.modal', function () {
+        if (pendingPaymentCheckbox && (!pendingPaymentTrip || !pendingPaymentTrip.isPaid)) {
+            pendingPaymentCheckbox.checked = false;
+        }
+        pendingPaymentTrip = null;
+        pendingPaymentCheckbox = null;
+    });
 });
+
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value || '—';
+}
+
+function resetTripModalScroll() {
+    const modalBody = document.querySelector('#createTripModal .modal-body');
+    if (modalBody) modalBody.scrollTop = 0;
+}
+
+function openTripDetailsModal(tripId) {
+    const trip = findTripById(tripId);
+    if (!trip) {
+        showToast('❌ Рейс не найден', 'error');
+        return;
+    }
+
+    const expense = (trip.commission || 0) + (trip.fuel || 0) + (trip.toll || 0);
+    const profit = trip.income - expense;
+
+    document.getElementById('tripDetailsModal').dataset.tripId = trip.id || '';
+    setText('detailsTripTitle', `Рейс ${trip.id || '—'}`);
+    setText('detailsTripSubtitle', `${trip.date || '—'} · ${trip.route || 'Маршрут не указан'}`);
+    setText('detailsDate', trip.date);
+    setText('detailsDriver', trip.driver);
+    setText('detailsVehicle', trip.vehicle);
+    setText('detailsContractor', trip.contractor);
+    setText('detailsRoute', trip.route);
+    setText('detailsIncome', `${trip.income.toLocaleString('ru-RU')} ₽`);
+    setText('detailsExpense', `${expense.toLocaleString('ru-RU')} ₽`);
+    setText('detailsProfit', `${profit.toLocaleString('ru-RU')} ₽`);
+    setText('detailsInvoice', trip.invoice ? `№${trip.invoice}` : '—');
+    setText('detailsPayment', trip.isPaid ? `Оплачено${trip.paymentDate ? ` · ${trip.paymentDate}` : ''}` : 'Не оплачено');
+    setText('detailsCargo', trip.cargo);
+    setText('detailsReceiver', trip.cargoReceiver);
+
+    tripDetailsModal.show();
+}
+
+function editTripFromDetails() {
+    const tripId = document.getElementById('tripDetailsModal').dataset.tripId;
+    if (!tripId) return;
+    tripDetailsModal.hide();
+    editTrip(tripId);
+}
+
+function deleteTripFromDetails() {
+    const tripId = document.getElementById('tripDetailsModal').dataset.tripId;
+    if (!tripId) return;
+    tripDetailsModal.hide();
+    deleteTrip(tripId);
+}
+
+function openPaymentDateModal(trip, checkbox) {
+    pendingPaymentTrip = trip;
+    pendingPaymentCheckbox = checkbox;
+
+    const dateInput = document.getElementById('paymentConfirmDate');
+    const errorEl = document.getElementById('paymentDateError');
+    const tripLabel = document.getElementById('paymentTripLabel');
+
+    dateInput.value = sheetDateToInput(trip.paymentDate) || formatDateForInput(new Date());
+    errorEl.classList.add('d-none');
+    tripLabel.textContent = `${trip.id || '—'} · ${trip.driver || 'Водитель не указан'} · ${trip.route || 'Маршрут не указан'}`;
+    paymentDateModal.show();
+}
+
+async function confirmPaymentDate() {
+    const dateInput = document.getElementById('paymentConfirmDate');
+    const errorEl = document.getElementById('paymentDateError');
+    const confirmBtn = document.getElementById('confirmPaymentDateBtn');
+    const paymentDate = inputDateToSheet(dateInput.value);
+
+    if (!paymentDate) {
+        errorEl.classList.remove('d-none');
+        dateInput.focus();
+        return;
+    }
+
+    if (!pendingPaymentTrip || !pendingPaymentCheckbox) {
+        paymentDateModal.hide();
+        return;
+    }
+
+    errorEl.classList.add('d-none');
+    confirmBtn.disabled = true;
+
+    const trip = pendingPaymentTrip;
+    const checkbox = pendingPaymentCheckbox;
+
+    try {
+        const saved = await updatePaymentInSheet(trip, true, checkbox, paymentDate);
+        if (!saved) return;
+        pendingPaymentTrip = null;
+        pendingPaymentCheckbox = null;
+        paymentDateModal.hide();
+    } finally {
+        confirmBtn.disabled = false;
+    }
+}
 
 function openTripModal() {
     modalMode = 'create';
@@ -317,11 +538,14 @@ function openTripModal() {
     document.getElementById('vehicle').removeAttribute('readonly');
     
     document.getElementById('tripForm').reset();
+    document.getElementById('driver').value = DEFAULT_NEW_TRIP_DRIVER;
+    document.getElementById('vehicle').value = DEFAULT_NEW_TRIP_VEHICLE;
     isProfitManual = false;
     document.getElementById('profit').classList.remove('manually-edited');
     updateTripId();
     recalcProfit();
     tripModal.show();
+    resetTripModalScroll();
 }
 
 // ===== РЕДАКТИРОВАНИЕ РЕЙСА =====
@@ -338,9 +562,8 @@ function editTrip(tripId) {
     document.getElementById('saveBtn').textContent = '💾 Сохранить изменения';
     document.getElementById('tripIdBadge').textContent = tripId;
     document.getElementById('tripIdBadge').style.display = 'inline-block';
-    document.getElementById('vehicle').setAttribute('readonly', 'readonly'); // ID не меняем при редактировании
+    document.getElementById('vehicle').setAttribute('readonly', 'readonly');
     
-    // Заполняем форму данными рейса
     document.getElementById('departureDate').value = trip.date ? trip.date.split('.').reverse().join('-') : '';
     document.getElementById('driver').value = trip.driver || '';
     document.getElementById('vehicle').value = trip.vehicle || '';
@@ -361,14 +584,15 @@ function editTrip(tripId) {
     document.getElementById('tollRoad').value = trip.toll || '';
     document.getElementById('profit').value = trip.profit || '';
     
-    isProfitManual = true; // При редактировании считаем прибыль ручной
+    isProfitManual = true;
     document.getElementById('profit').classList.add('manually-edited');
     
     tripModal.show();
+    resetTripModalScroll();
 }
 
 function updateTripId() {
-    if (modalMode === 'edit') return; // При редактировании ID не меняется
+    if (modalMode === 'edit') return;
     
     const vehicleSelect = document.getElementById('vehicle');
     const badge = document.getElementById('tripIdBadge');
@@ -473,6 +697,7 @@ async function saveTrip() {
     
     try {
         await withLoading(async () => {
+            markDataMutation();
             await fetch(API_URL, {
                 method: 'POST',
                 mode: 'no-cors',
@@ -507,6 +732,7 @@ async function deleteTrip(tripId) {
     
     try {
         await withLoading(async () => {
+            markDataMutation();
             await fetch(API_URL, {
                 method: 'POST',
                 mode: 'no-cors',
@@ -542,12 +768,16 @@ function populateFilters() {
     const drivers = [...new Set(tripsData.map(t => t.driver).filter(d => d))].sort();
     
     const cSelect = document.getElementById('filter-contractor');
+    const currentContractor = cSelect.value || 'all';
     cSelect.innerHTML = '<option value="all">Все контрагенты</option>';
     contractors.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; cSelect.appendChild(o); });
+    cSelect.value = contractors.includes(currentContractor) ? currentContractor : 'all';
     
     const dSelect = document.getElementById('filter-driver');
+    const currentDriver = dSelect.value || 'all';
     dSelect.innerHTML = '<option value="all">Все водители</option>';
     drivers.forEach(d => { const o = document.createElement('option'); o.value = d; o.textContent = d; dSelect.appendChild(o); });
+    dSelect.value = drivers.includes(currentDriver) ? currentDriver : 'all';
 }
 
 // ===== УМНАЯ СОРТИРОВКА =====
@@ -620,13 +850,13 @@ function applyFilters() {
 
     renderTable(currentTrips);
     updateTotals(currentTrips);
-    populateFilters();
 }
 
 // ===== ТАБЛИЦА =====
-function appendTextCell(row, text, className = '') {
+function appendTextCell(row, text, className = '', label = '') {
     const cell = document.createElement('td');
     if (className) cell.className = className;
+    if (label) cell.dataset.label = label;
     cell.textContent = text;
     row.appendChild(cell);
     return cell;
@@ -651,7 +881,7 @@ function renderTable(trips) {
         const row = document.createElement('tr');
         row.className = 'empty-row';
         const cell = document.createElement('td');
-        cell.colSpan = 11;
+        cell.colSpan = 12;
         cell.textContent = 'Нет рейсов по выбранным фильтрам';
         row.appendChild(cell);
         tbody.appendChild(row);
@@ -665,10 +895,12 @@ function renderTable(trips) {
         const isPaid = trip.isPaid || false;
         
         const row = document.createElement('tr');
-        appendTextCell(row, trip.id || '—', 'ps-4 fw-mono');
-        appendTextCell(row, trip.date || '—', 'date-cell');
+        row.className = 'trip-row';
+        appendTextCell(row, trip.id || '—', 'ps-4 fw-mono', 'ID');
+        appendTextCell(row, trip.date || '—', 'date-cell', 'Дата');
 
         const driverCell = document.createElement('td');
+        driverCell.dataset.label = 'Водитель';
         const driverName = document.createElement('div');
         driverName.className = 'fw-medium';
         driverName.textContent = trip.driver || '—';
@@ -678,19 +910,23 @@ function renderTable(trips) {
         driverCell.append(driverName, vehicleName);
         row.appendChild(driverCell);
 
-        appendTextCell(row, trip.contractor || '—');
-        appendTextCell(row, trip.route || '—');
-        appendTextCell(row, `${trip.income.toLocaleString('ru-RU')} ₽`, 'fw-bold');
+        appendTextCell(row, trip.contractor || '—', '', 'Контрагент');
+        appendTextCell(row, trip.route || '—', '', 'Маршрут');
+        appendTextCell(row, `${trip.income.toLocaleString('ru-RU')} ₽`, 'fw-bold', 'Стоимость');
 
         const invoiceCell = document.createElement('td');
+        invoiceCell.dataset.label = '№ счета';
         const invoiceValue = document.createElement('span');
         invoiceValue.className = 'text-muted';
         invoiceValue.textContent = `№${trip.invoice || '—'}`;
         invoiceCell.appendChild(invoiceValue);
         row.appendChild(invoiceCell);
 
+        appendTextCell(row, trip.docType || '—', 'text-muted', 'Тип документа');
+
         const paymentCell = document.createElement('td');
         paymentCell.className = 'text-center';
+        paymentCell.dataset.label = 'Оплата';
         const paymentCheckbox = document.createElement('input');
         paymentCheckbox.type = 'checkbox';
         paymentCheckbox.className = 'form-check-input payment-check';
@@ -702,22 +938,42 @@ function renderTable(trips) {
             if (!tripId) return;
 
             const sourceTrip = tripsData.find(t => t.id === tripId) || trip;
-            updatePaymentInSheet(sourceTrip, this.checked, this);
+            if (this.checked) {
+                this.checked = false;
+                openPaymentDateModal(sourceTrip, this);
+                return;
+            }
+
+            updatePaymentInSheet(sourceTrip, false, this);
         });
         paymentCell.appendChild(paymentCheckbox);
         row.appendChild(paymentCell);
 
-        appendTextCell(row, `${expense.toLocaleString('ru-RU')} ₽`, 'expense-value');
-        appendTextCell(row, `${profit.toLocaleString('ru-RU')} ₽`, `profit-value ${profit < 0 ? 'profit-negative' : ''}`.trim());
+        appendTextCell(row, `${expense.toLocaleString('ru-RU')} ₽`, 'expense-value', 'Расход');
+        appendTextCell(row, `${profit.toLocaleString('ru-RU')} ₽`, `profit-value ${profit < 0 ? 'profit-negative' : ''}`.trim(), 'Прибыль');
 
         const actionsCell = document.createElement('td');
         actionsCell.className = 'pe-4 text-end';
+        actionsCell.dataset.label = 'Действия';
         actionsCell.append(
             createActionButton('✏️', 'Редактировать', 'btn-edit', () => editTrip(trip.id)),
             document.createTextNode(' '),
             createActionButton('🗑️', 'Удалить', 'btn-delete', () => deleteTrip(trip.id))
         );
         row.appendChild(actionsCell);
+
+        const detailsCell = document.createElement('td');
+        detailsCell.className = 'mobile-details-cell';
+        detailsCell.dataset.label = 'Подробнее';
+        const detailsButton = document.createElement('button');
+        detailsButton.type = 'button';
+        detailsButton.className = 'btn btn-sm btn-outline-primary mobile-details-btn';
+        detailsButton.textContent = 'Подробнее';
+        detailsButton.setAttribute('aria-label', `Открыть детали рейса ${trip.id || ''}`.trim());
+        detailsButton.addEventListener('click', () => openTripDetailsModal(trip.id));
+        detailsCell.appendChild(detailsButton);
+        row.appendChild(detailsCell);
+
         tbody.appendChild(row);
     });
 
