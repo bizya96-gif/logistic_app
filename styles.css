@@ -43,7 +43,7 @@ a:hover { color: var(--primary-color); }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
 .payment-check { width: 20px; height: 20px; cursor: pointer; accent-color: var(--success-color); }
-.table thead th { text-align: center !important; vertical-align: middle; white-space: nowrap; }
+.table thead th { text-align: center !important; vertical-align: middle; }
 .summary-row { background: #f8fafc; border-top: 2px solid #e2e8f0; }
 .summary-row td { font-weight: 600; white-space: nowrap; }
 .expense-value { color: var(--danger-color); font-weight: 600; }
