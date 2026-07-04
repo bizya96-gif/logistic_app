@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logistics App | Учет рейсов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+</head>
+<body>
+    <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+    <div class="toast-container" id="toastContainer"></div>
+
+    <nav class="app-nav sticky-top">
+        <div class="container d-flex justify-content-between align-items-center px-0">
+            <a class="navbar-brand fw-bold fs-4 d-flex align-items-center gap-2" href="#">
+                <span style="background: var(--accent-color); width: 10px; height: 10px; border-radius: 50%;"></span>
+                Logistics App
+            </a>
+            <div class="d-flex">
+                <button class="nav-tab-btn active" data-target="dashboard">📊 Дашборд</button>
+                <button class="nav-tab-btn" data-target="create-trip">➕ Создать рейс</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container py-4">
+        <section id="dashboard" class="section-view active">
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+                <div>
+                    <h2 class="h4 fw-bold mb-0">Обзор логистики</h2>
+                    <div class="last-updated" id="last-updated">Данные еще не обновлялись</div>
+                </div>
+                <div class="d-flex gap-2 align-items-center">
+                    <div class="d-flex gap-2 align-items-center bg-white p-2 rounded shadow-sm">
+                        <label class="text-muted small mb-0">Период:</label>
+                        <select class="form-select form-select-sm" id="period-year">
+                            <option value="all">Все годы</option>
+                            <option value="2026" selected>2026</option>
+                            <option value="2025">2025</option>
+                            <option value="2024">2024</option>
+                        </select>
+                        <select class="form-select form-select-sm" id="period-month">
+                            <option value="all" selected>Весь год</option>
+                            <option value="01">Январь</option><option value="02">Февраль</option><option value="03">Март</option>
+                            <option value="04">Апрель</option><option value="05">Май</option><option value="06">Июнь</option>
+                            <option value="07">Июль</option><option value="08">Август</option><option value="09">Сентябрь</option>
+                            <option value="10">Октябрь</option><option value="11">Ноябрь</option><option value="12">Декабрь</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary" id="refreshBtn" onclick="withLoading(() => loadTripsFromSheet())" title="Обновить данные из таблицы">
+                        🔄 Обновить
+                    </button>
+                    <button class="btn btn-sm btn-primary" onclick="openTripModal()">
+                        ➕ Новый рейс
+                    </button>
+                </div>
+            </div>
+
+            <div class="row g-4 mb-4">
+                <div class="col-md-3"><div class="card-custom stat-card p-3 h-100"><div class="text-muted small fw-medium">Выручка за период</div><div class="fs-3 fw-bold mt-1" id="stat-income">0 ₽</div></div></div>
+                <div class="col-md-3"><div class="card-custom stat-card expense p-3 h-100"><div class="text-muted small fw-medium">Фактические расходы</div><div class="fs-3 fw-bold mt-1 text-danger" id="stat-expense">0 ₽</div></div></div>
+                <div class="col-md-3"><div class="card-custom stat-card profit p-3 h-100"><div class="text-muted small fw-medium">Чистая прибыль</div><div class="fs-3 fw-bold mt-1 text-success" id="stat-profit">0 ₽</div></div></div>
+                <div class="col-md-3"><div class="card-custom stat-card trips p-3 h-100"><div class="text-muted small fw-medium">Всего рейсов</div><div class="fs-3 fw-bold mt-1" id="stat-trips">0</div></div></div>
+            </div>
+
+            <div class="card-custom p-3 mb-3">
+                <div class="row g-3 align-items-center">
+                    <div class="col-md-3"><label class="form-label small fw-medium text-muted mb-1">Контрагент</label><select class="form-select form-select-sm" id="filter-contractor"><option value="all">Все контрагенты</option></select></div>
+                    <div class="col-md-3"><label class="form-label small fw-medium text-muted mb-1">Водитель</label><select class="form-select form-select-sm" id="filter-driver"><option value="all">Все водители</option></select></div>
+                    <div class="col-md-3"><label class="form-label small fw-medium text-muted mb-1">Оплата</label><select class="form-select form-select-sm" id="filter-payment"><option value="all">Все</option><option value="paid">Оплаченные</option><option value="unpaid">Неоплаченные</option></select></div>
+                    <div class="col-md-3"><label class="form-label small fw-medium text-muted mb-1">Поиск</label><input type="text" class="form-control form-control-sm" placeholder="🔍 Поиск по ID, маршруту..." id="search-input"></div>
+                </div>
+            </div>
+
+            <div class="card-custom p-0 overflow-hidden">
+                <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold">Рейсы за <span id="period-display">2026 год</span></h5>
+                    <div class="text-muted small">
+                         Оплачено: <span class="fw-bold text-success" id="paid-count">0</span> (<span id="paid-sum">0 ₽</span>) | 
+                        Не оплачено: <span class="fw-bold text-danger" id="unpaid-count">0</span> (<span id="unpaid-sum">0 ₽</span>)
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4 sortable" data-sort="id">ID <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort="date">Дата <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort="driver">Водитель + Авто <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort="contractor">Контрагент <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort="route">Маршрут <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort="income">Стоимость <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort="invoice">№&nbsp;счета <span class="sort-icon"></span></th>
+                                <th class="text-center">Оплата</th>
+                                <th class="sortable" data-sort="expense">Расход <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort="profit">Прибыль <span class="sort-icon"></span></th>
+                                <th class="pe-4 text-end">Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trips-table-body"></tbody>
+                        <tfoot>
+                            <tr class="summary-row">
+                                <td colspan="5" class="ps-4 text-end">ИТОГО:</td>
+                                <td class="fw-bold fs-5" id="total-income">0 ₽</td>
+                                <td colspan="2"></td>
+                                <td class="expense-value" id="total-expense">0 ₽</td>
+                                <td class="profit-value" id="total-profit">0 ₽</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section id="create-trip" class="section-view">
+            <div class="card-custom p-5 text-center">
+                <h3 class="h4 fw-bold mb-3">➕ Создание рейса</h3>
+                <p class="text-muted mb-4">Нажмите кнопку "➕ Новый рейс" в шапке дашборда</p>
+                <button class="btn btn-primary" onclick="openTripModal()">
+                    ➕ Создать новый рейс
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- МОДАЛЬНОЕ ОКНО СОЗДАНИЯ/РЕДАКТИРОВАНИЯ РЕЙСА -->
+    <div class="modal fade modal-custom" id="createTripModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="d-flex align-items-center gap-3">
+                        <h5 class="modal-title fw-bold" id="modalTitle">Создание рейса</h5>
+                        <span class="trip-id-badge" id="tripIdBadge">—</span>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="tripForm">
+                        <!-- 1. ПЛАНИРОВАНИЕ -->
+                        <div class="section-block">
+                            <div class="section-title"><span>📅</span> Планирование</div>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label-custom">Дата выезда <span class="req">*</span></label>
+                                    <input type="date" class="form-control" id="departureDate" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label-custom">Водитель <span class="req">*</span></label>
+                                    <input type="text" class="form-control" id="driver" list="driverList" required placeholder="Выберите или введите">
+                                    <datalist id="driverList"></datalist>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label-custom">Автомобиль <span class="req">*</span></label>
+                                    <input type="text" class="form-control" id="vehicle" list="vehicleList" required placeholder="Выберите или введите" onchange="updateTripId()">
+                                    <datalist id="vehicleList"></datalist>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label-custom">Контрагент</label>
+                                    <input type="text" class="form-control" id="contractor" list="contractorList" placeholder="Выберите или введите">
+                                    <datalist id="contractorList"></datalist>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label-custom">Цена договора (₽)</label>
+                                    <input type="number" class="form-control" id="contractPrice" placeholder="0" oninput="recalcProfit()">
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label-custom">Маршрут <span class="req">*</span></label>
+                                    <input type="text" class="form-control" id="route" required placeholder="Москва → Санкт-Петербург">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. ГРУЗ И ДОКУМЕНТЫ -->
+                        <div class="section-block">
+                            <div class="section-title"><span>📦</span> Груз и документы</div>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label-custom">Грузополучатель</label>
+                                    <input type="text" class="form-control" id="receiver" placeholder="Название компании">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label-custom">Груз</label>
+                                    <input type="text" class="form-control" id="cargo" placeholder="Стройматериалы, паллеты">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label-custom">Тип документа</label>
+                                    <select class="form-select" id="docType">
+                                        <option value="Заявка">Заявка</option>
+                                        <option value="Договор-заявка Б/Н">Договор-заявка Б/Н</option>
+                                        <option value="Договор">Договор</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label-custom">№ счет</label>
+                                    <input type="text" class="form-control" id="invoiceNum" placeholder="Номер счёта">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. ФИНАНСЫ -->
+                        <div class="section-block">
+                            <div class="section-title"><span>💰</span> Финансы</div>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label-custom">Нал / Б.Н.</label>
+                                    <div class="toggle-wrapper">
+                                        <span class="toggle-label">Нал</span>
+                                        <label class="switch">
+                                            <input type="checkbox" id="taxToggle">
+                                            <span class="slider"></span>
+                                        </label>
+                                        <span class="toggle-label">Б.Н.</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label-custom">Дата оплаты</label>
+                                    <input type="date" class="form-control" id="paymentDate">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label-custom">Комиссионные (₽)</label>
+                                    <input type="number" class="form-control" id="commission" placeholder="0" oninput="recalcProfit()">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label-custom">Цена простоя (₽)</label>
+                                    <input type="number" class="form-control" id="downtimePrice" placeholder="0">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label-custom">Прибыль по загрузке (₽)</label>
+                                    <input type="number" class="form-control profit-input" id="profit" placeholder="0" oninput="markManualProfit()">
+                                    <div class="calc-hint">Считается: Цена - (Топливо + Дорога + Комиссия)</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 4. РАСХОДЫ -->
+                        <div class="section-block">
+                            <div class="section-title"><span>⛽</span> Расходы</div>
+                            <div class="row g-3">
+                                <div class="col-md-3">
+                                    <label class="form-label-custom">Расстояние (км)</label>
+                                    <input type="number" class="form-control" id="distance" placeholder="0">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label-custom">На топливо (₽)</label>
+                                    <input type="number" class="form-control" id="fuelCost" placeholder="0" oninput="recalcProfit()">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label-custom">Литр</label>
+                                    <input type="number" class="form-control" id="fuelLiters" placeholder="0" step="0.1">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label-custom">Платная дорога (₽)</label>
+                                    <input type="number" class="form-control" id="tollRoad" placeholder="0" oninput="recalcProfit()">
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="saveBtn" onclick="saveTrip()">💾 Сохранить план</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
