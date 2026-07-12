@@ -2,32 +2,54 @@
 const SHEET_NAME = '2026 Загрузки';
 const HEADERS_ROW = 2;
 const DATA_START_ROW = 5;
+const READ_LAST_COL = 26;
+const TRIPS_CACHE_KEY = 'alexlogistic_trips_v1';
+const TRIPS_CACHE_META_KEY = TRIPS_CACHE_KEY + ':meta';
+const TRIPS_CACHE_TTL_SECONDS = 60;
+const TRIPS_CACHE_CHUNK_SIZE = 30000;
+const PATCH_PROTECTED_HEADERS = ['№ рейса'];
 
 // ===== ЧТЕНИЕ ДАННЫХ (GET) =====
 function doGet(e) {
   try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
-    if (!sheet) return jsonError('Лист "' + SHEET_NAME + '" не найден!');
+    // Необязательный параметр ?sheet=... — для разовой выгрузки архивных листов
+    // (напр. "2025 Загрузки", "2024 Загрузки"). По умолчанию — текущий SHEET_NAME.
+    const requestedSheetName = (e && e.parameter && e.parameter.sheet) ? String(e.parameter.sheet).trim() : '';
+    const targetSheetName = requestedSheetName || SHEET_NAME;
+    const isArchiveRequest = requestedSheetName && requestedSheetName !== SHEET_NAME;
+
+    const cache = CacheService.getScriptCache();
+    const noCache = e && e.parameter && e.parameter.noCache === '1';
+    const cached = (noCache || isArchiveRequest) ? null : getTripsCachePayload(cache);
+    if (cached) return jsonTextResponse(cached);
+
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = spreadsheet.getSheetByName(targetSheetName);
+    if (!sheet) {
+      const availableNames = spreadsheet.getSheets().map(function (s) { return s.getName(); });
+      return jsonError('Лист "' + targetSheetName + '" не найден! Доступные листы: ' + JSON.stringify(availableNames));
+    }
 
     const lastRow = sheet.getLastRow();
-    const lastCol = sheet.getLastColumn();
+    const lastCol = Math.min(sheet.getLastColumn(), READ_LAST_COL);
 
     if (lastRow < DATA_START_ROW) return jsonResponse([]);
 
+    const rowsCount = lastRow - DATA_START_ROW + 1;
     const headers = sheet.getRange(HEADERS_ROW, 1, 1, lastCol).getValues()[0];
-    const dataRange = sheet.getRange(DATA_START_ROW, 1, lastRow - DATA_START_ROW + 1, lastCol);
+    const dataRange = sheet.getRange(DATA_START_ROW, 1, rowsCount, lastCol);
     const data = dataRange.getValues();
-    const fontColors = dataRange.getFontColors();
+    const amountFontColors = sheet.getRange(DATA_START_ROW, 13, rowsCount, 1).getFontColors();
 
     const trips = [];
-    
+
     data.forEach((row, rowIndex) => {
       const id = String(row[0] || '').trim();
       const date = row[1];
       const contractor = String(row[4] || '').trim();
       const profit = row[20];
       const paymentDate = row[15];
-      const amountFontColor = fontColors[rowIndex] ? fontColors[rowIndex][12] : '';
+      const amountFontColor = amountFontColors[rowIndex] ? amountFontColors[rowIndex][0] : '';
 
       const hasId = id !== '';
       const hasDateAndContractor = date !== '' && contractor !== '';
@@ -50,7 +72,11 @@ function doGet(e) {
       trips.push(obj);
     });
 
-    return jsonResponse(trips);
+    const payload = JSON.stringify(trips);
+    if (!isArchiveRequest) {
+      tryPutTripsCachePayload(cache, payload);
+    }
+    return jsonTextResponse(payload);
   } catch (err) {
     return jsonError('Ошибка: ' + err.toString());
   }
@@ -112,6 +138,7 @@ function doPost(e) {
 
         sheet.insertRowsAfter(insertRow - 1, 1);
         sheet.getRange(insertRow, 1, 1, newRow.length).setValues([newRow]);
+        clearTripsCache();
 
         return jsonResponse({
           success: true,
@@ -161,6 +188,7 @@ function doPost(e) {
       updatedRow[24] = body.trip.sum || '';
 
       sheet.getRange(rowIndex, 1, 1, updatedRow.length).setValues([updatedRow]);
+      clearTripsCache();
 
       return jsonResponse({ success: true, message: 'Рейс обновлен на строке ' + rowIndex });
     }
@@ -175,6 +203,7 @@ function doPost(e) {
       }
 
       sheet.deleteRow(rowIndex);
+      clearTripsCache();
 
       return jsonResponse({ success: true, message: 'Рейс удален' });
     }
@@ -189,10 +218,19 @@ function doPost(e) {
         return jsonError('Рейс не найден: ' + tripId);
       }
 
-      // Колонка P (16-я) = Дата оплаты
+      // M (13-я) = сумма, P (16-я) = дата оплаты.
       sheet.getRange(rowIndex, 16).setValue(paymentDate);
+      sheet.getRange(rowIndex, 13).setFontColor(paymentDate ? '#000000' : '#ff0000');
+      clearTripsCache();
 
       return jsonResponse({ success: true, message: 'Оплата обновлена' });
+    }
+
+    // ===== УНИВЕРСАЛЬНОЕ ТОЧЕЧНОЕ ОБНОВЛЕНИЕ РЕЙСА =====
+    if (body.action === 'patchTrip') {
+      const result = patchTripRow(sheet, body);
+      clearTripsCache();
+      return jsonResponse(result);
     }
 
     return jsonError('Неизвестное действие: ' + body.action);
@@ -215,6 +253,81 @@ function findTripRow(sheet, tripId) {
   }
 
   return -1;
+}
+
+function getHeaderMap(sheet) {
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(HEADERS_ROW, 1, 1, lastCol).getValues()[0];
+  const map = {};
+
+  headers.forEach((header, index) => {
+    const key = String(header || '').trim();
+    if (key) map[key] = index + 1;
+  });
+
+  return map;
+}
+
+function assertPatchableHeader(header, headerMap) {
+  const key = String(header || '').trim();
+  if (!key || !headerMap[key]) {
+    throw new Error('Колонка не найдена: ' + key);
+  }
+
+  if (PATCH_PROTECTED_HEADERS.indexOf(key) !== -1) {
+    throw new Error('Колонку нельзя менять через patchTrip: ' + key);
+  }
+
+  return key;
+}
+
+function patchTripRow(sheet, body) {
+  const tripId = body.tripId;
+  const rowIndex = findTripRow(sheet, tripId);
+
+  if (rowIndex === -1) {
+    throw new Error('Рейс не найден: ' + tripId);
+  }
+
+  const headerMap = getHeaderMap(sheet);
+  const values = body.values || {};
+  const formats = body.formats || {};
+  let updatedValues = 0;
+  let updatedFormats = 0;
+
+  Object.keys(values).forEach(header => {
+    const key = assertPatchableHeader(header, headerMap);
+    sheet.getRange(rowIndex, headerMap[key]).setValue(values[header]);
+    updatedValues++;
+  });
+
+  Object.keys(formats).forEach(header => {
+    const key = assertPatchableHeader(header, headerMap);
+    const format = formats[header] || {};
+    const range = sheet.getRange(rowIndex, headerMap[key]);
+
+    if (format.fontColor !== undefined) {
+      range.setFontColor(format.fontColor);
+      updatedFormats++;
+    }
+
+    if (format.background !== undefined) {
+      range.setBackground(format.background);
+      updatedFormats++;
+    }
+
+    if (format.fontWeight !== undefined) {
+      range.setFontWeight(format.fontWeight);
+      updatedFormats++;
+    }
+  });
+
+  return {
+    success: true,
+    message: 'Рейс обновлен через patchTrip',
+    updatedValues: updatedValues,
+    updatedFormats: updatedFormats
+  };
 }
 
 // ===== ПОИСК СТРОКИ ДЛЯ ВСТАВКИ НОВОГО РЕЙСА =====
@@ -274,8 +387,12 @@ function getNextTripId(sheet, vehicle) {
 
 // ===== УТИЛИТЫ =====
 function jsonResponse(data) {
+  return jsonTextResponse(JSON.stringify(data));
+}
+
+function jsonTextResponse(payload) {
   return ContentService
-    .createTextOutput(JSON.stringify(data))
+    .createTextOutput(payload)
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -283,4 +400,77 @@ function jsonError(message) {
   return ContentService
     .createTextOutput(JSON.stringify({ error: message }))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function getTripsCachePayload(cache) {
+  const metaRaw = cache.get(TRIPS_CACHE_META_KEY);
+  if (!metaRaw) return null;
+
+  try {
+    const meta = JSON.parse(metaRaw);
+    const chunksCount = Number(meta.chunks || 0);
+    if (!chunksCount) return null;
+
+    const keys = [];
+    for (let i = 0; i < chunksCount; i++) {
+      keys.push(TRIPS_CACHE_KEY + ':' + i);
+    }
+
+    const cachedChunks = cache.getAll(keys);
+    const chunks = [];
+    for (let i = 0; i < keys.length; i++) {
+      const chunk = cachedChunks[keys[i]];
+      if (!chunk) return null;
+      chunks.push(chunk);
+    }
+
+    return chunks.join('');
+  } catch (err) {
+    return null;
+  }
+}
+
+function tryPutTripsCachePayload(cache, payload) {
+  try {
+    putTripsCachePayload(cache, payload);
+  } catch (err) {
+    console.warn('Не удалось сохранить кэш рейсов:', err);
+  }
+}
+
+function putTripsCachePayload(cache, payload) {
+  const chunksCount = Math.ceil(payload.length / TRIPS_CACHE_CHUNK_SIZE);
+  const values = {};
+
+  for (let i = 0; i < chunksCount; i++) {
+    const start = i * TRIPS_CACHE_CHUNK_SIZE;
+    values[TRIPS_CACHE_KEY + ':' + i] = payload.slice(start, start + TRIPS_CACHE_CHUNK_SIZE);
+  }
+
+  cache.putAll(values, TRIPS_CACHE_TTL_SECONDS);
+  cache.put(TRIPS_CACHE_META_KEY, JSON.stringify({ chunks: chunksCount }), TRIPS_CACHE_TTL_SECONDS);
+}
+
+function clearTripsCache() {
+  const cache = CacheService.getScriptCache();
+  const metaRaw = cache.get(TRIPS_CACHE_META_KEY);
+  const keys = [TRIPS_CACHE_META_KEY];
+
+  if (metaRaw) {
+    try {
+      const meta = JSON.parse(metaRaw);
+      const chunksCount = Number(meta.chunks || 0);
+      for (let i = 0; i < chunksCount; i++) {
+        keys.push(TRIPS_CACHE_KEY + ':' + i);
+      }
+    } catch (err) {
+      // Если метаданные повреждены, ниже удалим типичный небольшой набор чанков.
+    }
+  }
+
+  for (let i = 0; i < 10; i++) {
+    keys.push(TRIPS_CACHE_KEY + ':' + i);
+  }
+
+  cache.removeAll(keys);
 }

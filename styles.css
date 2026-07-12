@@ -33,10 +33,18 @@ a:hover { color: var(--primary-color); }
 .stats-grid .stat-card { min-height: 74px; padding: 10px 12px !important; border-radius: 10px; }
 .stat-card .small { font-size: 0.72rem; line-height: 1.15; }
 .stat-card .fs-3 { font-size: clamp(1.18rem, 2vw, 1.5rem) !important; line-height: 1.05; margin-top: 4px !important; overflow-wrap: anywhere; }
+.kpi-trend { min-height: 15px; margin-top: 3px; font-size: 0.72rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-trend .trend-up { color: var(--success-color); font-weight: 600; }
+.kpi-trend .trend-down { color: var(--danger-color); font-weight: 600; }
+.kpi-trend .trend-sep { color: #cbd5e1; margin: 0 4px; }
+.trip-row-archived { background-color: #f8fafc; }
+.trip-row-archived td { color: #64748b; }
 .filters-accordion .accordion-item { border: 0; overflow: hidden; }
 .filters-accordion .accordion-button { min-height: 46px; padding: 10px 14px; color: var(--text-color); font-weight: 700; background: #fff; box-shadow: none; }
 .filters-accordion .accordion-button:not(.collapsed) { background: #fff7ed; color: var(--text-color); box-shadow: none; }
 .filters-accordion .accordion-button:focus { border-color: var(--accent-color); box-shadow: 0 0 0 0.25rem rgba(249, 115, 22, 0.15); }
+.filters-accordion .accordion-button-static { display: flex; align-items: center; cursor: default; background: #fff7ed; }
+.filters-accordion .accordion-button-static::after { display: none; }
 .filters-accordion .accordion-body { padding: 12px 14px 14px; border-top: 1px solid #e2e8f0; }
 .section-view { display: none; animation: fadeIn 0.3s ease; }
 .section-view.active { display: block; }

@@ -35,20 +35,20 @@
             </div>
 
             <div class="stats-grid row g-4 mb-4">
-                <div class="col-md-3"><div class="card-custom stat-card p-3 h-100"><div class="text-muted small fw-medium">Выручка за период</div><div class="fs-3 fw-bold mt-1" id="stat-income">0 ₽</div></div></div>
-                <div class="col-md-3"><div class="card-custom stat-card expense p-3 h-100"><div class="text-muted small fw-medium">Фактические расходы</div><div class="fs-3 fw-bold mt-1 text-danger" id="stat-expense">0 ₽</div></div></div>
-                <div class="col-md-3"><div class="card-custom stat-card profit p-3 h-100"><div class="text-muted small fw-medium">Чистая прибыль</div><div class="fs-3 fw-bold mt-1 text-success" id="stat-profit">0 ₽</div></div></div>
-                <div class="col-md-3"><div class="card-custom stat-card trips p-3 h-100"><div class="text-muted small fw-medium">Всего рейсов</div><div class="fs-3 fw-bold mt-1" id="stat-trips">0</div></div></div>
+                <div class="col-md-3"><div class="card-custom stat-card p-3 h-100"><div class="text-muted small fw-medium">Выручка за период</div><div class="fs-3 fw-bold mt-1" id="stat-income">0 ₽</div><div class="kpi-trend small" id="trend-income"></div></div></div>
+                <div class="col-md-3"><div class="card-custom stat-card expense p-3 h-100"><div class="text-muted small fw-medium">Фактические расходы</div><div class="fs-3 fw-bold mt-1 text-danger" id="stat-expense">0 ₽</div><div class="kpi-trend small" id="trend-expense"></div></div></div>
+                <div class="col-md-3"><div class="card-custom stat-card profit p-3 h-100"><div class="text-muted small fw-medium">Чистая прибыль</div><div class="fs-3 fw-bold mt-1 text-success" id="stat-profit">0 ₽</div><div class="kpi-trend small" id="trend-profit"></div></div></div>
+                <div class="col-md-3"><div class="card-custom stat-card trips p-3 h-100"><div class="text-muted small fw-medium">Всего рейсов</div><div class="fs-3 fw-bold mt-1" id="stat-trips">0</div><div class="kpi-trend small" id="trend-trips"></div></div></div>
             </div>
 
             <div class="accordion filters-accordion mb-3" id="dashboardFiltersAccordion">
                 <div class="accordion-item card-custom filters-card">
                     <h2 class="accordion-header" id="dashboardFiltersHeading">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#dashboardFiltersPanel" aria-expanded="false" aria-controls="dashboardFiltersPanel">
+                        <span class="accordion-button accordion-button-static">
                             Фильтры
-                        </button>
+                        </span>
                     </h2>
-                    <div id="dashboardFiltersPanel" class="accordion-collapse collapse" aria-labelledby="dashboardFiltersHeading" data-bs-parent="#dashboardFiltersAccordion">
+                    <div id="dashboardFiltersPanel" aria-labelledby="dashboardFiltersHeading">
                         <div class="accordion-body">
                             <div class="row g-3 align-items-center">
                                 <div class="col-md-3 col-lg-2">
@@ -294,8 +294,8 @@
                     </dl>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-danger" onclick="deleteTripFromDetails()">Удалить</button>
-                    <button type="button" class="btn btn-primary" onclick="editTripFromDetails()">Редактировать</button>
+                    <button type="button" class="btn btn-outline-danger" id="detailsDeleteBtn" onclick="deleteTripFromDetails()">Удалить</button>
+                    <button type="button" class="btn btn-primary" id="detailsEditBtn" onclick="editTripFromDetails()">Редактировать</button>
                 </div>
             </div>
         </div>

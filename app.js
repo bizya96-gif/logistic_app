@@ -200,15 +200,16 @@ function writeTripsCache(data) {
     }
 }
 
-function normalizeTripsData(data) {
-    counters = {};
+function normalizeTripsData(data, options = {}) {
+    const { trackCounters = true, archived = false } = options;
+    if (trackCounters) counters = {};
 
     return data.map(row => {
         const id = row['№ рейса'] || '';
         const contractor = row['Контрагент'] || '';
         if (!id && !contractor) return null;
 
-        if (id && /^[А-ЯA-Z]-\d+$/i.test(id)) {
+        if (trackCounters && id && /^[А-ЯA-Z]-\d+$/i.test(id)) {
             const match = id.match(/^([А-ЯA-Z])-(\d+)$/i);
             if (match) {
                 const letter = match[1].toUpperCase();
@@ -246,9 +247,39 @@ function normalizeTripsData(data) {
             profit: parseMoney(row['Прибль по загрузке']),
             leshe: row['Леше'] || '',
             sum: row['Сумма'] || '',
-            isPaid: isPaid
+            isPaid: isPaid,
+            archived: archived
         };
     }).filter(trip => trip !== null);
+}
+
+// ===== АРХИВНЫЕ ДАННЫЕ ПРОШЛЫХ ЛЕТ (статичные JSON, разово выгружены из Sheets) =====
+let historyTripsData = [];
+let historyLoadPromise = null;
+
+async function loadHistoryData() {
+    if (historyLoadPromise) return historyLoadPromise;
+
+    historyLoadPromise = (async () => {
+        const sources = ['data/history-2024.json', 'data/history-2025.json'];
+        const results = await Promise.all(sources.map(async (url) => {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) return [];
+                const data = await response.json();
+                if (!Array.isArray(data)) return [];
+                return normalizeTripsData(data, { trackCounters: false, archived: true });
+            } catch (err) {
+                console.warn('Не удалось загрузить архивные данные:', url, err);
+                return [];
+            }
+        }));
+        historyTripsData = results.flat();
+        applyFilters();
+        return historyTripsData;
+    })();
+
+    return historyLoadPromise;
 }
 
 function applyTripsData(data) {
@@ -438,8 +469,8 @@ function resetTripModalScroll() {
     if (modalBody) modalBody.scrollTop = 0;
 }
 
-function openTripDetailsModal(tripId) {
-    const trip = findTripById(tripId);
+function openTripDetailsModal(tripOrId) {
+    const trip = (tripOrId && typeof tripOrId === 'object') ? tripOrId : findTripById(tripOrId);
     if (!trip) {
         showToast('❌ Рейс не найден', 'error');
         return;
@@ -463,6 +494,11 @@ function openTripDetailsModal(tripId) {
     setText('detailsPayment', trip.isPaid ? `Оплачено${trip.paymentDate ? ` · ${trip.paymentDate}` : ''}` : 'Не оплачено');
     setText('detailsCargo', trip.cargo);
     setText('detailsReceiver', trip.cargoReceiver);
+
+    const editBtn = document.getElementById('detailsEditBtn');
+    const deleteBtn = document.getElementById('detailsDeleteBtn');
+    if (editBtn) editBtn.style.display = trip.archived ? 'none' : '';
+    if (deleteBtn) deleteBtn.style.display = trip.archived ? 'none' : '';
 
     tripDetailsModal.show();
 }
@@ -822,7 +858,7 @@ function applyFilters() {
     const payment = document.getElementById('filter-payment').value;
     const search = document.getElementById('search-input').value.toLowerCase();
     
-    currentTrips = tripsData.filter(trip => {
+    currentTrips = tripsData.concat(historyTripsData).filter(trip => {
         if (trip.date) {
             const parts = trip.date.split('.');
             if (parts.length === 3) {
@@ -850,6 +886,7 @@ function applyFilters() {
 
     renderTable(currentTrips);
     updateTotals(currentTrips);
+    updateTrends(year, month);
 }
 
 // ===== ТАБЛИЦА =====
@@ -893,9 +930,10 @@ function renderTable(trips) {
         const expense = (trip.commission || 0) + (trip.fuel || 0) + (trip.toll || 0);
         const profit = trip.income - expense;
         const isPaid = trip.isPaid || false;
-        
+        const isArchived = !!trip.archived;
+
         const row = document.createElement('tr');
-        row.className = 'trip-row';
+        row.className = 'trip-row' + (isArchived ? ' trip-row-archived' : '');
         appendTextCell(row, trip.id || '—', 'ps-4 fw-mono', 'ID');
         appendTextCell(row, trip.date || '—', 'date-cell', 'Дата');
 
@@ -931,7 +969,8 @@ function renderTable(trips) {
         paymentCheckbox.type = 'checkbox';
         paymentCheckbox.className = 'form-check-input payment-check';
         paymentCheckbox.checked = isPaid;
-        paymentCheckbox.disabled = !trip.id;
+        paymentCheckbox.disabled = !trip.id || isArchived;
+        paymentCheckbox.title = isArchived ? 'Архивный рейс — редактирование недоступно' : '';
         paymentCheckbox.dataset.tripId = trip.id || '';
         paymentCheckbox.addEventListener('change', function() {
             const tripId = this.dataset.tripId;
@@ -955,11 +994,19 @@ function renderTable(trips) {
         const actionsCell = document.createElement('td');
         actionsCell.className = 'pe-4 text-end';
         actionsCell.dataset.label = 'Действия';
-        actionsCell.append(
-            createActionButton('✏️', 'Редактировать', 'btn-edit', () => editTrip(trip.id)),
-            document.createTextNode(' '),
-            createActionButton('🗑️', 'Удалить', 'btn-delete', () => deleteTrip(trip.id))
-        );
+        if (isArchived) {
+            const archivedBadge = document.createElement('span');
+            archivedBadge.className = 'badge text-muted bg-light border';
+            archivedBadge.textContent = 'Архив';
+            archivedBadge.title = 'Данные прошлых лет доступны только для просмотра';
+            actionsCell.appendChild(archivedBadge);
+        } else {
+            actionsCell.append(
+                createActionButton('✏️', 'Редактировать', 'btn-edit', () => editTrip(trip.id)),
+                document.createTextNode(' '),
+                createActionButton('🗑️', 'Удалить', 'btn-delete', () => deleteTrip(trip.id))
+            );
+        }
         row.appendChild(actionsCell);
 
         const detailsCell = document.createElement('td');
@@ -970,7 +1017,7 @@ function renderTable(trips) {
         detailsButton.className = 'btn btn-sm btn-outline-primary mobile-details-btn';
         detailsButton.textContent = 'Подробнее';
         detailsButton.setAttribute('aria-label', `Открыть детали рейса ${trip.id || ''}`.trim());
-        detailsButton.addEventListener('click', () => openTripDetailsModal(trip.id));
+        detailsButton.addEventListener('click', () => openTripDetailsModal(trip));
         detailsCell.appendChild(detailsButton);
         row.appendChild(detailsCell);
 
@@ -998,6 +1045,82 @@ function updateTotals(trips) {
     document.getElementById('total-income').textContent = totalIncome.toLocaleString('ru-RU') + ' ₽';
     document.getElementById('total-expense').textContent = totalExpense.toLocaleString('ru-RU') + ' ₽';
     document.getElementById('total-profit').textContent = totalProfit.toLocaleString('ru-RU') + ' ₽';
+}
+
+// ===== ТРЕНДЫ KPI (только когда выбран конкретный месяц конкретного года) =====
+const TREND_MONTH_NAMES = ['', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
+function summarizeMonth(allTrips, year, month) {
+    let income = 0, expense = 0, profit = 0, count = 0;
+    allTrips.forEach(trip => {
+        if (!trip.date) return;
+        const parts = trip.date.split('.');
+        if (parts.length !== 3) return;
+        if (parts[2] !== year || parts[1] !== month) return;
+        const exp = (trip.commission || 0) + (trip.fuel || 0) + (trip.toll || 0);
+        income += trip.income || 0;
+        expense += exp;
+        profit += (trip.income || 0) - exp;
+        count += 1;
+    });
+    return { income, expense, profit, count };
+}
+
+function shiftMonth(year, month, delta) {
+    const total = parseInt(year, 10) * 12 + (parseInt(month, 10) - 1) + delta;
+    const y = Math.floor(total / 12);
+    const m = (total % 12) + 1;
+    return { year: String(y), month: String(m).padStart(2, '0') };
+}
+
+function trendPercent(current, base) {
+    if (!base) return null;
+    return ((current - base) / Math.abs(base)) * 100;
+}
+
+function renderTrendBadge(elId, current, prev, prevLabel, yoy, yoyLabel) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+
+    const parts = [];
+    const prevPct = trendPercent(current, prev);
+    if (prevPct !== null) {
+        const cls = prevPct >= 0 ? 'trend-up' : 'trend-down';
+        const arrow = prevPct >= 0 ? '▲' : '▼';
+        parts.push(`<span class="${cls}">${arrow} ${Math.abs(prevPct).toFixed(0)}%</span> к ${prevLabel}`);
+    }
+    const yoyPct = trendPercent(current, yoy);
+    if (yoyPct !== null) {
+        const cls = yoyPct >= 0 ? 'trend-up' : 'trend-down';
+        const arrow = yoyPct >= 0 ? '▲' : '▼';
+        parts.push(`<span class="${cls}">${arrow} ${Math.abs(yoyPct).toFixed(0)}%</span> к ${yoyLabel}`);
+    }
+
+    el.innerHTML = parts.length ? parts.join('<span class="trend-sep">·</span>') : '';
+}
+
+function updateTrends(year, month) {
+    const trendIds = ['trend-income', 'trend-expense', 'trend-profit', 'trend-trips'];
+    if (year === 'all' || month === 'all') {
+        trendIds.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+        return;
+    }
+
+    const allTrips = tripsData.concat(historyTripsData);
+    const current = summarizeMonth(allTrips, year, month);
+
+    const prev = shiftMonth(year, month, -1);
+    const prevData = summarizeMonth(allTrips, prev.year, prev.month);
+    const prevLabel = `${TREND_MONTH_NAMES[parseInt(prev.month, 10)]} ${prev.year}`;
+
+    const yoyYear = String(parseInt(year, 10) - 1);
+    const yoyData = summarizeMonth(allTrips, yoyYear, month);
+    const yoyLabel = `${TREND_MONTH_NAMES[parseInt(month, 10)]} ${yoyYear}`;
+
+    renderTrendBadge('trend-income', current.income, prevData.income, prevLabel, yoyData.income, yoyLabel);
+    renderTrendBadge('trend-expense', current.expense, prevData.expense, prevLabel, yoyData.expense, yoyLabel);
+    renderTrendBadge('trend-profit', current.profit, prevData.profit, prevLabel, yoyData.profit, yoyLabel);
+    renderTrendBadge('trend-trips', current.count, prevData.count, prevLabel, yoyData.count, yoyLabel);
 }
 
 // ===== СТАТИСТИКА ОПЛАТЫ =====
@@ -1063,3 +1186,4 @@ document.querySelectorAll('.sortable').forEach(th => {
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 updatePeriodDisplay();
 withLoading(() => loadTripsFromSheet());
+loadHistoryData();
