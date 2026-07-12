@@ -248,7 +248,8 @@ function normalizeTripsData(data, options = {}) {
             leshe: row['Леше'] || '',
             sum: row['Сумма'] || '',
             isPaid: isPaid,
-            archived: archived
+            archived: archived,
+            sourceYear: row['__sourceYear'] || null
         };
     }).filter(trip => trip !== null);
 }
@@ -859,16 +860,20 @@ function applyFilters() {
     const search = document.getElementById('search-input').value.toLowerCase();
     
     currentTrips = tripsData.concat(historyTripsData).filter(trip => {
-        if (trip.date) {
-            const parts = trip.date.split('.');
-            if (parts.length === 3) {
-                const tripYear = parts[2];
-                const tripMonth = parts[1];
-                if (year !== 'all' && tripYear !== year) return false;
-                if (month !== 'all' && tripMonth !== month) return false;
-            }
+        if (year !== 'all' || month !== 'all') {
+            const parts = trip.date ? trip.date.split('.') : [];
+            const hasExactDate = parts.length === 3;
+
+            // Для архивных рейсов год определяем по листу-источнику (2024/2025 Загрузки),
+            // а не по полю "Дата выезда": в архиве встречаются пустые и ошибочно
+            // введённые даты (напр. опечатка года), а вкладка таблицы — надёжный признак.
+            const tripYear = (trip.archived && trip.sourceYear) ? trip.sourceYear : (hasExactDate ? parts[2] : null);
+            const tripMonth = hasExactDate ? parts[1] : null;
+
+            if (year !== 'all' && tripYear !== year) return false;
+            if (month !== 'all' && (!hasExactDate || tripMonth !== month)) return false;
         }
-        
+
         const matchC = contractor === 'all' || trip.contractor === contractor;
         const matchD = driver === 'all' || trip.driver === driver;
         const matchP = payment === 'all' || (payment === 'paid' && trip.isPaid) || (payment === 'unpaid' && !trip.isPaid);
