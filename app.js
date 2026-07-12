@@ -5,7 +5,7 @@ const DEFAULT_NEW_TRIP_DRIVER = 'Бизюков';
 const DEFAULT_NEW_TRIP_VEHICLE = 'ГАЗ 767';
 let tripsData = [];
 let currentTrips = [];
-let currentSort = { column: 'date', direction: 'desc' }; 
+let currentSort = { column: 'id', direction: 'desc' }; 
 let counters = {};
 let latestTripsRequestId = 0;
 let mutationVersion = 0;
@@ -923,7 +923,7 @@ function renderTable(trips) {
         const row = document.createElement('tr');
         row.className = 'empty-row';
         const cell = document.createElement('td');
-        cell.colSpan = 12;
+        cell.colSpan = 11;
         cell.textContent = 'Нет рейсов по выбранным фильтрам';
         row.appendChild(cell);
         tbody.appendChild(row);
@@ -939,8 +939,17 @@ function renderTable(trips) {
 
         const row = document.createElement('tr');
         row.className = 'trip-row' + (isArchived ? ' trip-row-archived' : '');
-        appendTextCell(row, trip.id || '—', 'ps-4 fw-mono', 'ID');
-        appendTextCell(row, trip.date || '—', 'date-cell', 'Дата');
+        const idDateCell = document.createElement('td');
+        idDateCell.className = 'ps-4';
+        idDateCell.dataset.label = 'ID';
+        const idValue = document.createElement('div');
+        idValue.className = 'fw-mono fw-medium';
+        idValue.textContent = trip.id || '—';
+        const dateValue = document.createElement('small');
+        dateValue.className = 'text-muted date-cell';
+        dateValue.textContent = trip.date || '—';
+        idDateCell.append(idValue, dateValue);
+        row.appendChild(idDateCell);
 
         const driverCell = document.createElement('td');
         driverCell.dataset.label = 'Водитель';

@@ -175,7 +175,7 @@ input:checked + .slider:before { transform: translateX(20px); }
         display: grid;
         grid-template-columns: minmax(54px, auto) minmax(80px, 1fr) auto;
         grid-template-areas:
-            "id date payment"
+            "id id payment"
             "route route route"
             "contractor contractor contractor"
             "income income income"
@@ -197,8 +197,8 @@ input:checked + .slider:before { transform: translateX(20px); }
         white-space: normal;
     }
     .table tbody tr.trip-row td::before { display: none; }
-    .table tbody tr.trip-row td[data-label="ID"] { grid-area: id; font-size: 0.92rem; font-weight: 700; color: var(--text-color); }
-    .table tbody tr.trip-row td[data-label="Дата"] { grid-area: date; color: #64748b; font-size: 0.82rem; }
+    .table tbody tr.trip-row td[data-label="ID"] { grid-area: id; display: flex; align-items: baseline; gap: 6px; font-size: 0.92rem; font-weight: 700; color: var(--text-color); }
+    .table tbody tr.trip-row td[data-label="ID"] .date-cell { font-size: 0.78rem; font-weight: 400; }
     .table tbody tr.trip-row td[data-label="Оплата"] { grid-area: payment; justify-self: end; display: flex; align-items: center; }
     .table tbody tr.trip-row td[data-label="Маршрут"] {
         grid-area: route;
