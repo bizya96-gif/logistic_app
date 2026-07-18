@@ -789,6 +789,14 @@ async function deleteTrip(tripId) {
     }
 }
 
+// ===== ФИЛЬТРЫ: СВОРАЧИВАНИЕ (только мобильные экраны, на десктопе блок всегда открыт) =====
+function toggleFiltersPanel() {
+    const container = document.getElementById('dashboardFiltersAccordion');
+    const btn = document.querySelector('#dashboardFiltersHeading .accordion-button-static');
+    const isCollapsed = container.classList.toggle('is-collapsed');
+    if (btn) btn.setAttribute('aria-expanded', String(!isCollapsed));
+}
+
 // ===== НАВИГАЦИЯ =====
 document.querySelectorAll('.nav-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1198,6 +1206,22 @@ document.querySelectorAll('.sortable').forEach(th => {
 });
 
 // ===== ИНИЦИАЛИЗАЦИЯ =====
+function setDefaultPeriodToCurrentMonth() {
+    const now = new Date();
+    const yearSelect = document.getElementById('period-year');
+    const monthSelect = document.getElementById('period-month');
+    const yearValue = String(now.getFullYear());
+    const monthValue = String(now.getMonth() + 1).padStart(2, '0');
+
+    if (yearSelect && Array.from(yearSelect.options).some(o => o.value === yearValue)) {
+        yearSelect.value = yearValue;
+    }
+    if (monthSelect && Array.from(monthSelect.options).some(o => o.value === monthValue)) {
+        monthSelect.value = monthValue;
+    }
+}
+
+setDefaultPeriodToCurrentMonth();
 updatePeriodDisplay();
 withLoading(() => loadTripsFromSheet());
 loadHistoryData();

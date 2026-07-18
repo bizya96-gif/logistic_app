@@ -158,6 +158,20 @@ input:checked + .slider:before { transform: translateX(20px); }
     .filters-accordion { margin-bottom: 10px !important; }
     .filters-accordion .accordion-button { min-height: 42px; padding: 9px 12px; font-size: 0.95rem; }
     .filters-accordion .accordion-body { padding: 10px 12px 12px; }
+    .filters-accordion .accordion-button-static { cursor: pointer; }
+    .filters-accordion .accordion-button-static::after {
+        display: inline-block;
+        content: "";
+        width: 1.25rem;
+        height: 1.25rem;
+        margin-left: auto;
+        background-image: var(--bs-accordion-btn-icon);
+        background-repeat: no-repeat;
+        background-size: 1.25rem;
+        transition: transform 0.2s ease;
+    }
+    .filters-accordion.is-collapsed .accordion-button-static::after { transform: rotate(-90deg); }
+    .filters-accordion.is-collapsed #dashboardFiltersPanel { display: none; }
     .filters-card .row { --bs-gutter-y: 10px; }
     .filters-card .form-select,
     .filters-card .form-control { font-size: 16px; }

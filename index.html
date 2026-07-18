@@ -41,12 +41,12 @@
                 <div class="col-md-3"><div class="card-custom stat-card trips p-3 h-100"><div class="text-muted small fw-medium">Всего рейсов</div><div class="fs-3 fw-bold mt-1" id="stat-trips">0</div><div class="kpi-trend small" id="trend-trips"></div></div></div>
             </div>
 
-            <div class="accordion filters-accordion mb-3" id="dashboardFiltersAccordion">
+            <div class="accordion filters-accordion mb-3 is-collapsed" id="dashboardFiltersAccordion">
                 <div class="accordion-item card-custom filters-card">
                     <h2 class="accordion-header" id="dashboardFiltersHeading">
-                        <span class="accordion-button accordion-button-static">
+                        <button type="button" class="accordion-button accordion-button-static" onclick="toggleFiltersPanel()" aria-expanded="false" aria-controls="dashboardFiltersPanel">
                             Фильтры
-                        </span>
+                        </button>
                     </h2>
                     <div id="dashboardFiltersPanel" aria-labelledby="dashboardFiltersHeading">
                         <div class="accordion-body">
